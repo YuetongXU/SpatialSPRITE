@@ -3,9 +3,9 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 
-# In this script, different thresholds are used to distinguish the categories of spots on the slice, 
+# In this script, different thresholds are used to distinguish the categories of spots in the section, 
 # in which the spot with legnum exceeding the threshold is the sample area, and the spot with legnum below the threshold is the background area.
-# Finally, we chose LegNum=4000 as the threshold.
+# Finally, we chose LegNum=4000 as the threshold of 10-min slice, chose LegNum=5000 as the threshold of 6-min slice.
 
 
 def format_clean(data_path: str, save_path: str) -> None:
@@ -29,23 +29,35 @@ def format_clean(data_path: str, save_path: str) -> None:
             s.write('{0}\t{1}\n'.format(cluster_name, sites_clean))
 
 
-def sprite_matrix(input_path: str, output_path: str) -> None:
+def stats_sprite(input_path: str, output_prefix: str) -> None:
 
-    spot_dict = {}
+    clusternum_dict, legnum_dict = {}, {}
 
     with open(input_path, 'r') as f:
         for line in f.readlines():
             lines = line.strip().split('\t')
             spot_id = '.'.join(lines[0].split('.')[4:-1])
             legnum = len(lines) - 1
-            if spot_id in spot_dict.keys():
-                spot_dict[spot_id] = spot_dict[spot_id] + legnum
+            if spot_id not in clusternum_dict.keys():
+                clusternum_dict[spot_id] = 1
+                legnum_dict[spot_id] = legnum
             else:
-                spot_dict[spot_id] = legnum
+                clusternum_dict[spot_id] += 1
+                legnum_dict[spot_id] += legnum
+                
+    legnum_data = pd.DataFrame.from_dict(legnum_dict, orient='index', columns=['legnum'])
+    legnum_data['spot_id'] = legnum_data.index.values
+    legnum_data['x'] = legnum_data['spot_id'].apply(lambda x: 50 - int(x.split('.')[0].split('Bo')[-1]))
+    legnum_data['y'] = legnum_data['spot_id'].apply(lambda x: 96 - int(x.split('.')[1].split('Bo')[-1]))
+    legnum_data = legnum_data.loc[:, ['spot_id', 'x', 'y', 'legnum']]
+    legnum_data.to_csv(output_prefix + '.legnum.tsv', header=True, index=False, sep='\t')
 
-    legnum_data = pd.DataFrame.from_dict(spot_dict, orient='index')
-    legnum_data.columns = ['legnum']
-    legnum_data.to_csv(output_path, header=True, index=True, sep='\t')
+    clusternum_data = pd.DataFrame.from_dict(clusternum_dict, orient='index', columns=['clusternum'])
+    clusternum_data['spot_id'] = clusternum_data.index.values
+    clusternum_data['x'] = clusternum_data['spot_id'].apply(lambda x: 50 - int(x.split('.')[0].split('Bo')[-1]))
+    clusternum_data['y'] = clusternum_data['spot_id'].apply(lambda x: 96 - int(x.split('.')[1].split('Bo')[-1]))
+    clusternum_data = clusternum_data.loc[:, ['spot_id', 'x', 'y', 'clusternum']]
+    clusternum_data.to_csv(output_prefix + '.clusternum.tsv', header=True, index=False, sep='\t')
 
 
 def plot_sampleback(input_path: str, plot_path: str, threshold_list: list) -> None:
@@ -75,14 +87,27 @@ def plot_sampleback(input_path: str, plot_path: str, threshold_list: list) -> No
 
 data_dir = '/home/xuyuetong/CRICK_Data/Github/Paper/Data/'
 save_dir = '/home/xuyuetong/CRICK_Data/Github/Paper/Distinguish_SampleBack/'
+
+
+# 10 min
 sprite_path = '{0}clusters_MS0612-5'.format(data_dir)
 clean_path = '{0}clusters_MS0612-5.clean.sprite'.format(data_dir)
-legnum_path = '{0}clusters_MS0612-5.spot.legnum.tsv'.format(save_dir)
+spot_prefix = '{0}clusters_MS0612-5.spot'.format(save_dir)
 plot_path = '{0}clusters_MS0612-5.spot.legnum.pdf'.format(save_dir)
 spotlegnum_threshold_list = list(range(1000, 7000, 1000))
 
 format_clean(sprite_path, clean_path)
-sprite_matrix(clean_path, legnum_path)
-plot_sampleback(legnum_path, plot_path, spotlegnum_threshold_list)
+stats_sprite(clean_path, spot_prefix)
+plot_sampleback(spot_prefix + '.legnum.tsv', plot_path, spotlegnum_threshold_list)
 
 
+# 6 min
+sprite_path = '{0}clusters_MS0612-3.odd70'.format(data_dir)
+clean_path = '{0}clusters_MS0612-3.odd70.clean.sprite'.format(data_dir)
+spot_prefix = '{0}clusters_MS0612-3.odd70.spot'.format(save_dir)
+plot_path = '{0}clusters_MS0612-3.odd70.spot.legnum.pdf'.format(save_dir)
+spotlegnum_threshold_list = list(range(1000, 7000, 1000))
+
+format_clean(sprite_path, clean_path)
+stats_sprite(clean_path, spot_prefix)
+plot_sampleback(spot_prefix + '.legnum.tsv', plot_path, spotlegnum_threshold_list)
