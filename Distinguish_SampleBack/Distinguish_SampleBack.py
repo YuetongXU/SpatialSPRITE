@@ -1,6 +1,8 @@
 import pandas as pd
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+mpl.rcParams['pdf.fonttype'] = 42
 
 
 # In this script, different thresholds are used to distinguish the categories of spots in the section, 
