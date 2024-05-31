@@ -1,9 +1,7 @@
 import matplotlib
-import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
 matplotlib.rcParams['pdf.fonttype'] = 42
 
 
@@ -19,18 +17,18 @@ fig, axs = plt.subplots(1, 2, figsize=(5 * len(sampleid_list), 4))
 
 for i, sampleid in enumerate(sampleid_list):
 
-    legnum_path = '{0}clusters_{1}.spot.legnum.tsv'.format(data_dir, sampleid)
+    endnum_path = '{0}clusters_{1}.spot.endnum.tsv'.format(data_dir, sampleid)
     sample_spotid_path = '{0}clusters_{1}.sample.spotid'.format(data_dir, sampleid)
-    legnum_data = pd.read_csv(legnum_path, header=0, index_col=None, sep='\t')
+    endnum_data = pd.read_csv(endnum_path, header=0, index_col=None, sep='\t')
     sample_spotid_data = pd.read_csv(sample_spotid_path, header=None, index_col=None, sep='\t')
     sample_spotid = sample_spotid_data.values.flatten()
 
-    sample_legnum = legnum_data[legnum_data['spot_id'].isin(sample_spotid)]
-    back_legnum = legnum_data[~legnum_data['spot_id'].isin(sample_spotid)]
-    back_legmean = back_legnum['legnum'].mean()
-    sample_legnum['ratio'] = (sample_legnum['legnum'] - back_legmean) / sample_legnum['legnum']
+    sample_endnum = endnum_data[endnum_data['spot_id'].isin(sample_spotid)]
+    back_endnum = endnum_data[~endnum_data['spot_id'].isin(sample_spotid)]
+    back_endmean = back_endnum['endnum'].mean()
+    sample_endnum['ratio'] = (sample_endnum['endnum'] - back_endmean) / sample_endnum['endnum']
 
-    hist = sns.histplot(data=sample_legnum, x='ratio', stat='probability', bins=50, ax=axs[i])
+    hist = sns.histplot(data=sample_endnum, x='ratio', stat='probability', bins=50, ax=axs[i])
     axs[i].set_title('Sample {0}'.format(i + 1), fontsize=15)
     axs[i].set_xlabel('Valid Information Ratio', fontsize=15)
     axs[i].set_ylabel('Frequency', fontsize=14)
