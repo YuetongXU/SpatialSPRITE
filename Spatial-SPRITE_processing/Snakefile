@@ -1,0 +1,369 @@
+from os.path import join
+import pandas as pd
+from pathlib import Path
+import subprocess
+from scripts import assembly
+configfile: "config.yaml"
+
+work_dir=config['WD']
+fastqc=config["RUNQC"]
+fastp=config["FASTP"]
+fastp_base_content_plot=config["FASTPLOT"]
+seqkit=config['SEQKIT']
+splitfqnum=config['SPLITFQNUM']
+java=config['JAVA']
+picard=config["PICARD"]
+barcode_id_jar=config["RUNBC"]
+bid_config=config["CONFIGBC"]
+lig_eff=config["RUNLIG"]
+lig_plot=config["RUNLIGPLOT"]
+full_bd=config["RUNFULLBC"]
+star=config["RUNSTAR"]
+star_index_mouse=config["STARINDEX_MOUSE"]
+star_mapping_stat_plot=config['STARSTATPLOT']
+samtools=config["RUNSAM"]
+add_chr=config["ADDCHR"]
+bedtools=config["DEDTOOLS"]
+mask_mouse=config["MAKSMM10"]
+preseq=config["PRESEQ"]
+preseq_plot=config["PRESEQPLOT"]
+assembly_mouse=config["ASSEMBLY_MOUSE"]
+n_tags=config["NTAGS"]
+get_clusters=config["GETCLUSTER"]
+cluster_size_plot=config['CSIZEPLOT']
+chromosome_mouse=config["CHR_MOUSE"]
+get_sprite_contact=config["RUNCONTACT"]
+hic=config["RUNHIC"]
+min_cluster_size=config["CLUSTERMIN"]
+max_cluster_size=config["CLUSTERMAX"]
+resolution=config["RESOLUTION"]
+downweighting=config["DOWNWEIGHT"]
+heat=config["HEATMAP"]
+max_scale=config["MAX"]
+cworld_lib=config['CWORLD_PERL_LIB']
+generateBins=config['GENERATIONBINS']
+addMatrixHeaders=config['ADDMATRIXHEADER']
+matrix2compartment=config['MATRIX2COMPARTMENT']
+matrix2insulation=config['MATRIX2INSULATION']
+matrix2EigenVectors=config['MATRIX2EIGENVECTORS']
+insulation2tads=config['INSULATION2TADS']
+
+SAMPLES = ['MS0612-5']
+print(SAMPLES)
+
+TYPES=['DNA']
+READS=['R1','R2']
+IDS=[str(i).zfill(3) for i in range(1,splitfqnum+1)]
+
+#output
+FASTQC=[expand(work_dir+'/'+"log/fastqc/fastqc_{sample}_{read}.txt",sample=SAMPLES,read=READS)]
+FASTPLOT=[expand(work_dir+'/'+"fastp/{sample}_{read}_base_content.png",sample=SAMPLES,read=READS)]
+LIG_PLOT=[expand(work_dir+'/'+"ligation/{sample}/{sample}_ligation_efficiency_plot.png", sample=SAMPLES)]
+STARSTATPLOT=[expand(work_dir+'/'+'alignment/plot/DNA/{sample}/mapping_stat_plot.png',sample=SAMPLES)]
+CSIZEPLOT=[expand(work_dir+'/'+"cluster/{type}/{sample}/clusters_{sample}.cluster_size.png",sample=SAMPLES,type=TYPES)]
+ENSEMBLHEATMAPMOUSE=[expand(work_dir+'/'+"contact_bulk/{type}/{sample}/{chr}_final.png",sample=SAMPLES,type=TYPES,chr=chromosome_mouse)]
+PRESEQPLOT=[expand(work_dir+'/'+"preseq/DNA/{sample}/{sample}.allpart_future_yield.png",sample=SAMPLES,type=TYPES)]
+CALLMOUSEBULKCOMPARTMENT=[expand(work_dir+'/'+"compartment_bulk/{type}/{sample}/{chr}/{chr}.1000000.addedHeaders.zScore.compartments.png",sample=SAMPLES,type=TYPES,chr=[x for x in chromosome_mouse if x !='genome'])]
+CALLMOUSEBULKTADS=[expand(work_dir+'/'+"tad_bulk/{type}/{sample}/{chr}/{chr}.40000.addedHeaders.log",sample=SAMPLES,type=TYPES,chr=[x for x in chromosome_mouse if x !='genome'])]
+
+rule all:
+    input:ENSEMBLHEATMAPMOUSE
+
+rule run_fastqc:
+    input: work_dir+'/'+"cleandata/{sample}_{read}.fq.gz"
+    output:
+        work_dir+'/'+"log/fastqc/fastqc_{sample}_{read}.txt"
+    params:
+        threads=10
+    shell:\
+        """
+        mkdir -p fastqc
+        {fastqc} {input} -o fastqc --threads {params.threads} &> {output}
+        """
+
+rule run_fastp:
+    input:
+        fq=work_dir+'/'+"cleandata/{sample}_{read}.fq.gz"
+    output:\
+        work_dir+'/'+"fastp/{sample}_{read}.html",\
+        work_dir+'/'+"fastp/{sample}_{read}.json"
+    log: work_dir+'/'+"log/fastp/fastp_{sample}_{read}.txt"
+    threads: 15
+    shell:\
+        """
+        mkdir -p {work_dir}/fastp
+        {fastp} \
+        --in1 {input.fq} \
+        --html {work_dir}/fastp/{wildcards.sample}_{wildcards.read}.html \
+        --json {work_dir}/fastp/{wildcards.sample}_{wildcards.read}.json \
+        --disable_adapter_trimming \
+        --thread {threads} \
+        --disable_length_filtering \
+        --disable_trim_poly_g &> {log}
+        """
+
+rule run_fastp_plot:
+    input: work_dir+'/'+"fastp/{sample}_{read}.json"
+    output: work_dir+'/'+"fastp/{sample}_{read}_base_content.png"
+    shell: "python {fastp_base_content_plot} --in {input} --out fastp"
+
+rule split_fq:
+    input:
+        r1 = work_dir+'/'+"cleandata/{sample}_R1.fq.gz",
+        r2 = work_dir+'/'+"cleandata/{sample}_R2.fq.gz"
+    output:
+        temp(expand(work_dir+'/'+"split_fq/{sample}/{sample}_R1.part_{id}.fq.gz",id=IDS,allow_missing=True)),
+        temp(expand(work_dir+'/'+"split_fq/{sample}/{sample}_R2.part_{id}.fq.gz",id=IDS,allow_missing=True))
+    log: work_dir+'/'+"log/split_fq/{sample}.log"
+    threads: 15
+    shell:\
+        """
+        mkdir -p {work_dir}/split_fq/{wildcards.sample}
+        {seqkit} split2 -1 {input.r1} -2 {input.r2} \
+        --by-part {splitfqnum} --threads {threads} \
+        --out-dir {work_dir}/split_fq/{wildcards.sample} --extension .gz  &> {log}
+        """
+
+rule barcode_id:
+    input:
+        r1 = work_dir+'/'+"split_fq/{sample}/{sample}_R1.part_{id}.fq.gz",
+        r2 = work_dir+'/'+"split_fq/{sample}/{sample}_R2.part_{id}.fq.gz"
+    output:
+        r1_barcoded =temp(work_dir+'/'+"new_fastq/{sample}/{sample}.part_{id}_R1.barcoded.fastq.gz"),
+        r2_barcoded =temp(work_dir+'/'+"new_fastq/{sample}/{sample}.part_{id}_R2.barcoded.fastq.gz")
+    log: "log/bID/{sample}/{sample}.part_{id}.log"
+    shell:\
+        """
+        mkdir -p {work_dir}/new_fastq/{wildcards.sample}
+        {java} -jar {barcode_id_jar} \
+        --input1 {input.r1} --input2 {input.r2} \
+        --output1 {output.r1_barcoded} --output2 {output.r2_barcoded} \
+        --config {bid_config} &> {log}
+        """
+
+rule merge_fq:
+    input: expand(work_dir+'/'+"new_fastq/{sample}/{sample}.part_{id}_{read}.barcoded.fastq.gz",id=IDS,allow_missing=True) #partial expand
+    output: temp(work_dir+'/'+"new_fastq/{sample}/{sample}_{read}.allpart.barcoded.fastq.gz")
+    log: work_dir+'/'+"log/mfq/{sample}/{sample}_{read}.mfq.log"
+    threads: 15
+    shell: "zcat {input} |pigz -p {threads} > {output} 2> {log}"
+
+rule get_ligation_efficiency:
+    input: work_dir+'/'+"new_fastq/{sample}/{sample}_R2.allpart.barcoded.fastq.gz"
+    output: work_dir+'/'+"ligation/{sample}/{sample}.ligation_efficiency.txt"
+    shell:\
+        """
+        mkdir -p {work_dir}/ligation/{wildcards.sample}
+        python {lig_eff} {input} {work_dir}/ligation/{wildcards.sample} > {output}
+        """
+
+rule run_ligation_efficiency_plot:
+    input: work_dir+'/'+"ligation/{sample}/{sample}.ligation_efficiency.txt"
+    output: work_dir+'/'+"ligation/{sample}/{sample}_ligation_efficiency_plot.png"
+    shell: "python {lig_plot} {work_dir}/ligation/{wildcards.sample}"
+
+rule full_barcode:
+    '''
+    remove incomplete barcodes
+    '''
+    input: work_dir+'/'+"new_fastq/{sample}/{sample}.part_{id}_{read}.barcoded.fastq.gz"
+    output:\
+        temp(work_dir+'/'+"new_fastq/{sample}/{sample}.part_{id}_{read}.barcoded_full.fastq.gz"),\
+        temp(work_dir+'/'+"new_fastq/{sample}/{sample}.part_{id}_{read}.barcoded_short.fastq.gz")
+    log: work_dir+'/'+"log/fB/{sample}/full_barcode_{sample}.part_{id}_{read}.txt"
+    shell: "python {full_bd} --r1 {input} &> {log}"
+
+rule fq_titile_reform:
+    '''
+    fq_titile_reform
+    '''
+    input: work_dir+'/'+"new_fastq/{sample}/{sample}.part_{id}_{read}.barcoded_full.fastq.gz"
+    output:temp(work_dir+'/'+"new_fastq/{sample}/{sample}.part_{id}_{read}.barcoded_full_rf.fastq.gz")
+    log: work_dir+'/'+"log/fqrf/{sample}/fq_titile_reform_{sample}.part_{id}_{read}.txt"
+    threads:15
+    shell:"zcat {input} | awk '{{ if(NR%4==1) {{sub(/\/[1-2]/,'_')}} {{print}} }}' | pigz -p {threads} 1> {output} 2> {log}"
+
+rule align_to_genome:
+    input: work_dir+'/'+"new_fastq/{sample}/{sample}.part_{id}_R1.barcoded_full_rf.fastq.gz"
+    output: temp(work_dir+'/'+"alignment/DNA/{sample}/{sample}.part_{id}Aligned.sortedByCoord.out.bam")
+    log: work_dir+'/'+"log/star/DNA/{sample}/star_{sample}.part_{id}.txt"
+    threads: 10
+    shell:\
+        """
+        mkdir -p {work_dir}/alignment/DNA/{wildcards.sample}
+        {star} --outReadsUnmapped Fastx \
+        --sjdbOverhang 149 \
+        --genomeDir {star_index_mouse} \
+        --readFilesIn {input} \
+        --readFilesCommand zcat \
+        --runThreadN {threads} \
+        --outFileNamePrefix {work_dir}/alignment/DNA/{wildcards.sample}/{wildcards.sample}.part_{wildcards.id} \
+        --outSAMtype BAM SortedByCoordinate \
+        --outSAMattributes All \
+        --limitOutSJcollapsed 1000000 \
+        --limitIObufferSize=150000000 &> {log}
+        """
+
+rule dedup:
+    input: work_dir+'/'+"alignment/DNA/{sample}/{sample}.part_{id}Aligned.sortedByCoord.out.bam"
+    output:temp(work_dir+'/'+"alignment/DNA/{sample}/{sample}.part_{id}Aligned.sortedByCoord.out.rmdup.bam")
+    log: work_dir+'/'+"log/dedup/DNA/{sample}/dedup_{sample}.part_{id}.txt"
+    shell:\
+        """
+        ({picard} MarkDuplicates \
+		MAX_FILE_HANDLES_FOR_READ_ENDS_MAP=1000 \
+		REMOVE_DUPLICATES=true \
+		METRICS_FILE={work_dir}/log/dedup/DNA/{wildcards.sample}/{wildcards.sample}.part_{wildcards.id}.metrics.txt \
+		I={input} \
+		O={output}) &> {log}
+        """
+
+rule merge_bam:
+    input: expand(work_dir+'/'+"alignment/DNA/{sample}/{sample}.part_{id}Aligned.sortedByCoord.out.bam",id=IDS,allow_missing=True) #partial expand
+    output: work_dir+'/'+"alignment/DNA/{sample}/{sample}.allpartAligned.sortedByCoord.out.bam"
+    log: work_dir+'/'+"log/mbam_forpreseq/DNA/{sample}/mbam_forpreseq.{sample}.allpart.log"
+    threads: 15
+    shell: "{samtools} merge {output} {input} --threads {threads} 2> {log}"
+
+rule preseq:
+    input: work_dir+'/'+"alignment/DNA/{sample}/{sample}.allpartAligned.sortedByCoord.out.bam"
+    output:
+        c_curve=work_dir+'/'+"preseq/DNA/{sample}/{sample}.allpart_complexity_output.txt",
+        lc_extrap=work_dir+'/'+"preseq/DNA/{sample}/{sample}.allpart_future_yield.txt"
+    log:
+        log_ccurve=work_dir+'/'+"log/preseq/DNA/{sample}/{sample}.allpart_ccurve.log",
+        log_lc_extrap=work_dir+'/'+"log/preseq/DNA/{sample}/{sample}.allpart_lc_extrap.log"
+    shell:\
+        """
+        mkdir -p {work_dir}/preseq/DNA/{wildcards.sample}
+        {preseq} c_curve -s 2e+05 -verbose -B {input} -o {output.c_curve} &> {log.log_ccurve}
+        {preseq} lc_extrap -s 1e+07 -e 2e+9 -verbose -B {input} -o {output.lc_extrap} &> {log.log_lc_extrap}
+        """
+
+rule preseq_plot:
+    input:\
+        c_curve=work_dir+'/'+"preseq/DNA/{sample}/{sample}.allpart_complexity_output.txt",
+        lc_extrap=work_dir+'/'+"preseq/DNA/{sample}/{sample}.allpart_future_yield.txt"
+    output:\
+        work_dir+'/'+"preseq/DNA/{sample}/{sample}.allpart_complexity_output.png",\
+        work_dir+'/'+"preseq/DNA/{sample}/{sample}.allpart_future_yield.png"
+    shell: "python {preseq_plot} {work_dir}/preseq/DNA/{wildcards.sample}"
+
+rule star_mapping_stat_plot:
+    input: expand(work_dir+'/'+"alignment/DNA/{sample}/{sample}.part_{id}Aligned.sortedByCoord.out.bam",id=IDS,allow_missing=True)
+    output: work_dir+'/'+"alignment/plot/DNA/{sample}/mapping_stat_plot.png"
+    shell: "python {star_mapping_stat_plot} {work_dir}/alignment/DNA/{wildcards.sample} {work_dir}/alignment/plot/DNA/{wildcards.sample}"
+
+rule unique_mappers:
+    input: work_dir+'/'+"alignment/{type}/{sample}/{sample}.part_{id}Aligned.sortedByCoord.out.rmdup.bam"
+    output: temp(work_dir+'/'+"alignment/{type}/{sample}/{sample}.part_{id}Aligned.sortedByCoord.out.rmdup.unique.bam")
+    log: work_dir+'/'+"log/star/{type}/{sample}/unimap_{sample}.part_{id}.txt"
+    shell: "{samtools} view -b -q 255 -o {output} {input} > {log} "
+
+rule add_chr:
+    input: work_dir+'/'+"alignment/{type}/{sample}/{sample}.part_{id}Aligned.sortedByCoord.out.rmdup.unique.bam"
+    output: temp(work_dir+'/'+"alignment/{type}/{sample}/{sample}.part_{id}Aligned.sortedByCoord.out.rmdup.unique.chr.bam")
+    log: work_dir+'/'+"log/add_chr/{type}/{sample}/add_chr_{sample}.part_{id}.txt"
+    shell: "python {add_chr} -i {input} -o {output} --assembly {assembly_mouse} &> {log}"
+
+# rule repeat_mask:
+#     input: work_dir+'/'+"alignment/{type}/{sample}/{sample}.part_{id}Aligned.sortedByCoord.out.unique.chr.bam"
+#     output: work_dir+'/'+"alignment/{type}/{sample}/{sample}.part_{id}Aligned.sortedByCoord.out.unique.chr.masked.bam"
+#     shell: "{bedtools} intersect -v -a {input} -b {mask_mouse} > {output}"
+
+rule merge_mask_bam:
+    input: expand(work_dir+'/'+"alignment/{type}/{sample}/{sample}.part_{id}Aligned.sortedByCoord.out.rmdup.unique.chr.bam",id=IDS,allow_missing=True) #partial expand
+    output: work_dir+'/'+"alignment/{type}/{sample}/{sample}.allpartAligned.sortedByCoord.out.rmdup.unique.chr.masked.bam"
+    log: work_dir+'/'+"log/mbam/{type}/{sample}/mbam.{sample}.allpart.log"
+    threads: 15
+    shell: "{samtools} merge {output} {input} --threads {threads} 2> {log}"
+
+rule make_ensembl_clusters:
+    input: work_dir+'/'+"alignment/{type}/{sample}/{sample}.allpartAligned.sortedByCoord.out.rmdup.unique.chr.masked.bam"
+    output: work_dir+'/'+"cluster/{type}/{sample}/clusters_{sample}"
+    log: work_dir+'/'+"log/cluster/{type}/{sample}/make_clusters_{sample}.log"
+    shell:"python {get_clusters} -i {input} -o {output} -n {n_tags} &> {log}"
+
+rule run_ensembl_contact:
+    input: work_dir+'/'+"cluster/{type}/{sample}/clusters_{sample}"
+    output:
+        raw_contact=work_dir+'/'+"contact_bulk/{type}/{sample}/{chr}.{reso}.raw_contact",
+        biases=work_dir+'/'+"contact_bulk/{type}/{sample}/{chr}.{reso}.biases",
+        ic=work_dir+'/'+"contact_bulk/{type}/{sample}/{chr}.{reso}.ic",
+        final_contact=work_dir+'/'+"contact_bulk/{type}/{sample}/{chr}.{reso}.final_contact"
+    log: work_dir+'/'+"log/contact_bulk/{type}/{sample}/{sample}_{chr}.{reso}.run_ensembl_contact.log"
+    params: downweighting='n_minus_one'
+    shell:\
+        """
+        python2.7 {get_sprite_contact} --clusters {input} \
+        --raw_contacts {output.raw_contact} \
+        --biases {output.biases} --iced {output.ic} \
+        --output {output.final_contact} --assembly {assembly_mouse} \
+        --chromosome {wildcards.chr} --min_cluster_size {min_cluster_size} \
+        --max_cluster_size {max_cluster_size} --resolution {wildcards.reso} \
+        --downweighting {params.downweighting} --hicorrector {hic} > {log}
+        """
+
+rule run_ensembl_heatmap:
+    input: work_dir+'/'+"contact_bulk/{type}/{sample}/{chr}.1000000.final_contact"
+    log: work_dir+'/'+"log/contact_bulk/{type}/{sample}/{sample}_{chr}.run_ensembl_heatmap.log"
+    output: work_dir+'/'+"contact_bulk/{type}/{sample}/{chr}_final.png"
+    shell:"python {heat} {input} {output} &> {log}"
+
+rule ensembl_cluster_size_plot:
+    input: work_dir+'/'+"cluster/{type}/{sample}/clusters_{sample}"
+    output: work_dir+'/'+"cluster/{type}/{sample}/clusters_{sample}.cluster_size.png"
+    log: work_dir+'/'+"log/cluster/{type}/{sample}/cluster_size_plot_{sample}.log"
+    shell: "python {cluster_size_plot} --in {input} --out {output} &> {log}"
+
+rule call_ensembl_compartment:
+    input: work_dir+'/'+"contact_bulk/{type}/{sample}/{chr}.1000000.ic"
+    params: chr_length=lambda wildcards, input: str(mouse_chr_size_str[wildcards.chr]),
+            out_dir= work_dir+'/'+"compartment_bulk/{type}/{sample}/{chr}"
+    log: work_dir+'/'+"log/call_bulk_compartment/{type}/{sample}/call_bulk_compartment_{chr}.txt"
+    output: work_dir+'/'+"compartment_bulk/{type}/{sample}/{chr}/{chr}.1000000.addedHeaders.zScore.compartments.png"
+    shell:\
+        """
+        (mkdir -p {params.out_dir} && cd {params.out_dir} ||exit
+
+        perl -I {cworld_lib} {generateBins} --a {assembly_mouse} \
+        --r {wildcards.chr}:1-{params.chr_length} \
+        --bsize 1000000 --bstep 1 {wildcards.chr}
+
+        mv myHeaders.headers.bed {wildcards.chr}.headers.bed
+        cut -f4 {wildcards.chr}.headers.bed > {wildcards.chr}.headers.bed-x
+        sed -i '1d' {wildcards.chr}.headers.bed-x
+
+        perl -I {cworld_lib} {addMatrixHeaders} -i {input} \
+        --xhf {wildcards.chr}.headers.bed-x --yhf {wildcards.chr}.headers.bed-x
+
+        perl -I {cworld_lib} {matrix2compartment} -i {wildcards.chr}.1000000.addedHeaders.matrix.gz) &> {log}
+        """
+
+rule call_ensembl_tad:
+    input: work_dir+'/'+"contact_bulk/{type}/{sample}/{chr}.40000.ic"
+    params: chr_length=lambda wildcards, input: str(mouse_chr_size_str[wildcards.chr]),
+            out_dir= work_dir+'/'+"tad_bulk/{type}/{sample}/{chr}"
+    log: work_dir+'/'+"log/tad_bulk/{type}/{sample}/call_bulk_tad_{chr}.txt"
+    output: work_dir+'/'+"tad_bulk/{type}/{sample}/{chr}/{chr}.40000.addedHeaders.log"
+    shell:\
+        """
+        (mkdir -p {params.out_dir} && cd {params.out_dir} ||exit
+
+        perl -I {cworld_lib} {generateBins} --a {assembly_mouse} \
+        --r {wildcards.chr}:1-{params.chr_length} \
+        --bsize 40000 --bstep 1 {wildcards.chr}
+
+        mv myHeaders.headers.bed {wildcards.chr}.headers.bed
+        cut -f4 {wildcards.chr}.headers.bed > {wildcards.chr}.headers.bed-x
+        sed -i '1d' {wildcards.chr}.headers.bed-x
+
+        perl -I {cworld_lib} {addMatrixHeaders} -i {input} \
+        --xhf {wildcards.chr}.headers.bed-x --yhf {wildcards.chr}.headers.bed-x
+
+        perl -I {cworld_lib} {matrix2insulation} -i {wildcards.chr}.40000.addedHeaders.matrix.gz \
+        --is 500000 --ids 250000 --nt 0.1 --bmoe 3
+        
+        perl -I {cworld_lib} {insulation2tads} -i {wildcards.chr}.40000.addedHeaders*immean.insulation \
+        --b {wildcards.chr}.40000.addedHeaders*insulation.boundaries) &> {log}
+        """

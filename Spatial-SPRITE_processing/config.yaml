@@ -1,0 +1,76 @@
+##########################
+# work dir
+WD: path 
+#split fq num
+SPLITFQNUM: 25
+#barcode configuration file
+CONFIGBC: config_spaSPRITE.txt
+# tags num
+NTAGS: 6
+#star index
+STARINDEX_MOUSE: star/mm10/index
+#get genome assembly information
+ASSEMBLY_MOUSE: mm10
+#estimated number of single-cells
+CELLSEL: 4800
+#estimiated number of top single-cells for contact and heatmap
+CELLTOP: 4800
+#get chromosome information (chrN for intra-chromosomal interaction, genome for inter-chromosomal interaction) to generate contact map
+CHR_MOUSE: ["genome","chr1","chr2","chr3","chr4","chr5","chr6","chr7","chr8","chr9","chr10","chr11","chr12","chr13","chr14","chr15","chr16","chr17","chr18","chr19","chrX"]
+#get minimal cluster size for calculating contact map
+CLUSTERMIN: 2
+#get maximal cluster size for calculating contact map
+CLUSTERMAX: 1000
+#The binning resolution for contact map
+RESOLUTION: [40000,1000000]
+#max value for the color-scale of the heatmaps
+MAX: 1
+# GTF
+GTF: star/mm10/Mus_musculus.GRCm38.95.gtf
+
+#########################################################################################################
+#run fastp base content plot
+FASTPLOT: /spt/fastp_base_content_plot.py
+#barcode id
+RUNBC: Guttman_Ismagilov_Labs-master/scSPRITE/misc/sprite-pipeline/java/BarcodeIdentification_v1.2.0.jar
+#ligation efficiency
+RUNLIG: /spt/get_ligation_efficiency.py
+#ligation efficiency plot
+RUNLIGPLOT: /spt/ligation_efficiency_barplot.py
+#run get full barcodes
+RUNFULLBC: sprite/GuttmanSPRITEPipeline/sprite-pipeline-master/scripts/python/get_full_barcodes.py
+#star mapping stat plot
+STARSTATPLOT: /spt/star_mapping_stat_plot.py
+# add chr
+ADDCHR: sprite/GuttmanSCSpritePipline/Guttman_Ismagilov_Labs-master_t1/scSPRITE/misc/sprite-pipeline/python/ensembl2ucsc.py
+PRESEQPLOT: /spt/preseq_plot.py
+# get clusters
+GETCLUSTER: /spt/getcluster.py
+# juicer_tools
+JUICERTOOLS :  juicer_tools_1.22.01.jar
+
+#cluster size plot
+CSIZEPLOT : /spt/cluster_size_plot.py
+#single filtered stat plot
+SINGLEFILTERSTATPLOT: /spt/single_filtered_stat_plot.py
+
+#run sprite_contact
+RUNCONTACT: /spt/get_contacts.py
+#hicorrector ic excutable path
+RUNHIC:  sprite/GuttmanSCSpritePipline/Guttman_Ismagilov_Labs-master_t1/scSPRITE/misc/sprite-pipeline/HiCorrector_1.2/bin/ic   # Please specify your local Hi-Corrector directory
+#plot contact heatmap
+HEATMAP: heatmap.py
+
+# call compartment
+CWORLD_PERL_LIB: Hi-C/CworldDekkerTest/cworld-dekker/lib
+GENERATIONBINS: Hi-C/CworldDekkerTest/cworld-dekker/scripts/perl/generateBins.pl
+ADDMATRIXHEADER: Hi-C/CworldDekkerTest/cworld-dekker/scripts/perl/addMatrixHeaders.pl
+MATRIX2COMPARTMENT: Hi-C/CworldDekkerTest/cworld-dekker/scripts/perl/matrix2compartment.pl
+MATRIX2EIGENVECTORS: Hi-C/CworldDekkerTest/cworld-dekker/scripts/python/matrix2EigenVectors.py
+REFSEQ: Hi-C/CworldDekkerTest/cworld-dekker/scripts/util/geneDensity/mm10.refseq.txt
+# call TAD
+MATRIX2INSULATION: Hi-C/CworldDekkerTest/cworld-dekker/scripts/perl/matrix2insulation.pl
+INSULATION2TADS: Hi-C/CworldDekkerTest/cworld-dekker/scripts/perl/insulation2tads.pl
+
+
+
