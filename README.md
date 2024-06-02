@@ -1,3 +1,15 @@
+# Introduction
+This project presents the analysis process and results of the SpatialSPRITE article (https://doi.org/10.1101/2024.05.07.592900).
+
+Citation: Yuang Ma, Bo Gou, Yuetong Xu, Muya Shu, Falong Lu, Xiang Li. Embryo spatial 3D genomics. biorxiv.
+
+Note:
+1. Chinese version of the documentation: README-CH.md
+2. The file paths in the scripts have not been modified; please modify them before running.
+
+<br>
+
+# Result
 ## 1. Distinguishing Sample Spots and Background Spots on the Slice
 ### 1.1 Determining Thresholds for Sample Spots and Background Spots
 We use the end num within a spot as the thresholds to classify the spots on the slice into sample or background. Interaction information within background spots will be considered noise and filtered out, not included in subsequent analyses. To ensure accurate classification, we compared the classification results using different end num values as thresholds with the fluorescence results (Figure 1). Each point in Figure 1 represents a spot, where blue points represent spots with end num < threshold, classified as background, and red points represent spots with end num > threshold, classified as sample. Ultimately, the threshold for Sample 1 (ultrasound 10 minutes) is end num = 4000, and for Sample 2 (ultrasound 6 minutes) is end num = 5000.

@@ -1,3 +1,16 @@
+## 介绍
+本项目介绍了 SpatialSPRITE 文章（ https://doi.org/10.1101/2024.05.07.592900 ）的分析流程及结果。
+
+**Citation**: Yuang Ma, Bo Gou, Yuetong Xu, Muya Shu, Falong Lu, Xiang Li. Embryo spatial 3D genomics. biorxiv.
+
+**Note**: 
+1. 英文版说明文档: README.md
+2. 脚本中文件路径未修改，运行时请修改。
+
+<br>
+
+
+# 结果
 ## 1. 区分切片上的样本 spot 及背景 spot
 ### 1.1 确定样本 spot 及背景 spot 的阈值
 我们以 spot 内 end num 为标准，划分切片上 spot 的类型（样本区 or 背景区）。其中，背景区 spot 内的互作信息将被视为噪音而过滤掉，不纳入后续的分析中。为了确保划分地准确，我们比较了不同 end num 作为阈值时的划分结果（图 1）与荧光结果的吻合程度。图 1 中每个点代表一个spot，其中蓝色点代表 end num &lt; threshold 的 spot，其被判定为背景区；红色点代表 end num &gt; threshold 的spot，其被判定为样本区。最终，样本1（超声 10min）的阈值为 end num=4000，样本2（超声 6min）的阈值为 end num=5000。
